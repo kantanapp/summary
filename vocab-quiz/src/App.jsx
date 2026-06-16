@@ -1928,7 +1928,7 @@ export default function App() {
 
       {/* メインコンテンツ */}
       {view === 'quiz' && cur ? (
-        <QuizScreen q={cur} onAnswer={handleAnswer} onBack={goBack} />
+        <QuizScreen key={cur.id} q={cur} onAnswer={handleAnswer} onBack={goBack} />
       ) : navTab === 'list' ? (
         <div className="px-4 sm:px-6 py-4 max-w-2xl mx-auto">
           {filtered.length === 0 ? (

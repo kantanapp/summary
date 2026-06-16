@@ -1928,6 +1928,9 @@ export default function App() {
 
       {/* メインコンテンツ */}
       {view === 'quiz' && cur ? (
+        // key={cur.id} は必須。外すと QuizScreen が再マウントされず解答状態(selected)が
+        // 次の問題に持ち越され、「次の問題が解答済みで表示される」「一覧で最後の問題の
+        // バッジが出ない（記録されない）」バグが再発する。
         <QuizScreen key={cur.id} q={cur} onAnswer={handleAnswer} onBack={goBack} />
       ) : navTab === 'list' ? (
         <div className="px-4 sm:px-6 py-4 max-w-2xl mx-auto">

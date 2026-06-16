@@ -2117,10 +2117,67 @@ function AddView({ apiKey, onShowKeyModal, onQuestionsAdded }) {
 // ============================================================
 // メインアプリ
 // ============================================================
+// ============================================================
+// 選択肢ランダム化（重要・恒久的に維持すること）
+// 問題データ側で答えが特定の番号（特に「1」）に偏っていても、表示時には
+// 各問題の選択肢を問題idで決定論的にシャッフルし、番号を振り直して
+// 答えがランダムに分散するようにする。SEED_DATA・ユーザー追加・AI生成の
+// すべての問題に自動適用されるので、今後問題を追加する際もデータ側の答えが
+// 何番であっても、答えは自動的にランダム化される。
+// idシードなので同じ問題は常に同じ並び＝リロードしても変わらない。
+// ※「答えが全部1になる」バグの再発防止。このロジックは削除しないこと。
+// ============================================================
+function hashStr(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function randomizeChoices(q) {
+  if (!q || !Array.isArray(q.choices) || q.choices.length === 0) return q;
+  const rand = mulberry32(hashStr(String(q.id)));
+  // Fisher–Yates（idシードで決定論的にシャッフル）
+  const shuffled = q.choices.map(c => ({ ...c }));
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  // 番号を1..4に振り直し、oldKey -> newKey の対応を作る
+  const keyMap = {};
+  const newChoices = shuffled.map((c, idx) => {
+    const newKey = String(idx + 1);
+    keyMap[c.key] = newKey;
+    return { ...c, key: newKey };
+  });
+  const newAnswer = keyMap[q.answer] || q.answer;
+  // 解説内の「<番号> <英単語>」の番号も新しい番号へ合わせる（英単語で位置を特定）
+  let explanation = q.explanation || '';
+  for (const c of q.choices) {
+    const newKey = keyMap[c.key];
+    if (!newKey || newKey === c.key || !c.word) continue;
+    const esc = String(c.word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    explanation = explanation.replace(new RegExp(`${c.key}(\\s*)(${esc})`, 'g'), `${newKey}$1$2`);
+  }
+  return { ...q, choices: newChoices, answer: newAnswer, explanation };
+}
+function buildQuestions(userQs) {
+  return [...SEED_DATA, ...userQs].map(randomizeChoices);
+}
+
 export default function App() {
   const [questions, setQuestions] = useState(() => {
     const userQs = loadLS('vocabquiz_questions', []);
-    return [...SEED_DATA, ...userQs];
+    return buildQuestions(userQs);
   });
   const [hist, setHist] = useState(() => loadLS('vocabquiz_history', {}));
   const [apiKey, setApiKey] = useState(() => loadLS('vocabquiz_apikey', ''));
@@ -2184,7 +2241,7 @@ export default function App() {
     const userQs = loadLS('vocabquiz_questions', []);
     const merged = [...userQs, ...newQs];
     saveLS('vocabquiz_questions', merged);
-    setQuestions([...SEED_DATA, ...merged]);
+    setQuestions(buildQuestions(merged));
     setNavTab('list');
     alert(`${newQs.length}問を追加しました！`);
   }
